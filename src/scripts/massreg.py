@@ -18,7 +18,7 @@ Usage examples:
 - kozutumi
 - iFixit
     massreg -r 'https://www\.ifixit\.com/GuidePDF/link/\d+/en' -l 6 --interval 0 --sort='natural'
-
+    massreg -i /tmp/tmpg_lqnot6 -o ifixit.txt -m check
 
 Ref.
 - URL: ^((http|https|ftp):\/\/)?([a-zA-Z0-9.-]+(\.[a-zA-Z]{2,6})+)((\/|\?|#)[^\s]*)?$
@@ -70,7 +70,7 @@ async def generate_urls(regex, output_file, count, limit, sort, interval):
 async def get_status_message(status_code):
     return http.client.responses.get(status_code, "Unknown Status")
 
-async def check_valid_urls(input_file, output_file, interval, timeout):
+async def check_valid_urls(input_file, output_file, interval, timeout, download_folder, download):
     try:
         with open(input_file, "r") as input_file, open(output_file, "w") as output_file:
             urls = input_file.readlines()
@@ -87,6 +87,10 @@ async def check_valid_urls(input_file, output_file, interval, timeout):
                             "url": url
                         }
                         yaml.dump({i: [log_entry]}, output_file, default_flow_style=False)
+
+                        # Download contents if specified
+                        if download and response.status_code == 200:
+                            await download_contents(url, download_folder)
                 except httpx.RequestError as e:
                     if hasattr(e, "response") and e.response is not None:
                         print(f"Error while checking {url}: {e.response.status_code}", end="\r")
@@ -112,9 +116,9 @@ async def check_valid_urls(input_file, output_file, interval, timeout):
                 await asyncio.sleep(interval)
 
     except KeyboardInterrupt:
-        print("\nGeneration and checking interrupted. Partial results saved.", end="\r")
+        print("\nGeneration and checking interrupted. Partial results saved.")
     except Exception as e:
-        print(f"Unknown error: {e}", end="\r")
+        print(f"Error during checking: {e}")
 
 def match_urls(input_file, regex):
     try:
@@ -133,6 +137,27 @@ def custom_traceroute(url):
     # Placeholder for custom traceroute logic
     print(f"Traceroute for {url}")
 
+async def download_contents(url, output_folder):
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            if response.status_code == 200:
+                # Create a timestamped folder to save contents
+                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                save_folder = os.path.join(output_folder, f"contents/{timestamp}")
+                os.makedirs(save_folder, exist_ok=True)
+
+                # Save contents to a file
+                content_filename = os.path.join(save_folder, "content.html")
+                with open(content_filename, "wb") as content_file:
+                    content_file.write(response.content)
+
+                print(f"Contents downloaded and saved to: {content_filename}")
+            else:
+                print(f"Failed to download contents from {url}. Status code: {response.status_code}")
+    except Exception as e:
+        print(f"Error downloading contents from {url}: {e}")
+
 async def main():
     parser = argparse.ArgumentParser(description="Generate URLs with specified regex pattern and check their validity.")
     parser.add_argument("-i", "--input", help="Input file for checking validity")
@@ -141,9 +166,10 @@ async def main():
     parser.add_argument("-c", "--count", type=int, default=10, help="Max number of urls (default: 10) [WIP: only works in random]")
     parser.add_argument("-l", "--limit", type=int, default=1, help="Max string length range limit (default: 1)")
     parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for HTTP requests (default: 5 seconds)")
-    parser.add_argument("--interval", type=int, default=1, help="Interval between requests (default: 1 second)")
+    parser.add_argument("-I", "--interval", type=int, default=1, help="Interval between requests (default: 1 second)")
     parser.add_argument("-m", "--mode", nargs="+", choices=["generate", "check", "match"], default=["generate"], help="Mode: generate, check, or match (default: generate)")
     parser.add_argument("-s", "--sort", nargs="+", choices=["natural", "asc", "desc","random"], default=["random"], help="Sort: generate, asc, or desc (default: random)")
+    parser.add_argument("-d", "--download", action="store_true", help="Enable downloading contents for valid URLs (default: False)")
 
     args = parser.parse_args()
 
@@ -165,7 +191,8 @@ async def main():
         # os.remove(temp_file.name)
 
     if "check" in args.mode:
-        await check_valid_urls(args.input, log_file, args.interval, args.timeout)
+        content_dir = "contents"
+        await check_valid_urls(args.input, log_file, args.interval, args.timeout, content_dir, args.download)
 
     if "match" in args.mode:
         match_urls(args.output, args.regex)
