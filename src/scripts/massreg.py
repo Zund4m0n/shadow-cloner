@@ -17,7 +17,7 @@ Usage examples:
 - firestorage
 - kozutumi
 - iFixit
-    massreg -r 'https://www\.ifixit\.com/GuidePDF/link/\d+/en' -l 6 --interval 0
+    massreg -r 'https://www\.ifixit\.com/GuidePDF/link/\d+/en' -l 6 --interval 0 --sort='natural'
 
 
 Ref.
@@ -50,7 +50,7 @@ async def generate_urls(regex, output_file, count, limit, sort, interval):
     try:
         with open(output_file, "w") as file:
 
-            if sort == 'natural':
+            if sort == ['natural']:
                 url = await generate_ord(regex, limit)
                 file.write(url + "\n")
             else:
@@ -143,7 +143,7 @@ async def main():
     parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for HTTP requests (default: 5 seconds)")
     parser.add_argument("--interval", type=int, default=1, help="Interval between requests (default: 1 second)")
     parser.add_argument("-m", "--mode", nargs="+", choices=["generate", "check", "match"], default=["generate"], help="Mode: generate, check, or match (default: generate)")
-    parser.add_argument("-s", "--sort", nargs="+", choices=["natural", "asc", "desc"], default=["random"], help="Sort: generate, asc, or desc (default: random)")
+    parser.add_argument("-s", "--sort", nargs="+", choices=["natural", "asc", "desc","random"], default=["random"], help="Sort: generate, asc, or desc (default: random)")
 
     args = parser.parse_args()
 
