@@ -38,13 +38,13 @@ from datetime import datetime
 
 async def generate_ord(regex, limit):
     print(f'Count: {exrex.count(regex, limit=limit)}')
-    print(f'limit: {limit}')
+    print(f'Range limit: {limit}')
     return '\n'.join(exrex.generate(regex, limit=limit))
 
 async def generate_rand(regex, limit):
     return exrex.getone(regex, limit=limit)
 
-async def generate_urls(regex, output_file, limit, sort, interval):
+async def generate_urls(regex, output_file, count, limit, sort, interval):
     try:
         with open(output_file, "w") as file:
 
@@ -52,7 +52,7 @@ async def generate_urls(regex, output_file, limit, sort, interval):
                 url = await generate_ord(regex, limit)
                 file.write(url + "\n")
             else:
-                for _ in tqdm(range(limit), desc="Generating"):
+                for _ in tqdm(range(count), desc="Generating"):
                     try:
                         url = await generate_rand(regex, limit)
                         file.write(url + "\n")
@@ -136,7 +136,8 @@ async def main():
     parser.add_argument("-i", "--input", help="Input file for checking validity")
     parser.add_argument("-o", "--output", default="output.txt", help="Output file for generated URLs (default: output.txt)")
     parser.add_argument("-r", "--regex", default="https://www\.example\.com/\d{7}", help="Regular expression pattern for generating random strings")
-    parser.add_argument("-l", "--limit", type=int, default=10, help="Max number of URLs to generate (default: 10)")
+    parser.add_argument("-c", "--count", type=int, default=10, help="Max number of urls (default: 10) [WIP: only works in random]")
+    parser.add_argument("-l", "--limit", type=int, default=1, help="Max string length range limit (default: 1)")
     parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for HTTP requests (default: 5 seconds)")
     parser.add_argument("--interval", type=int, default=1, help="Interval between requests (default: 1 second)")
     parser.add_argument("-m", "--mode", nargs="+", choices=["generate", "check", "match"], default=["generate"], help="Mode: generate, check, or match (default: generate)")
@@ -153,7 +154,7 @@ async def main():
     if "generate" in args.mode:
         temp_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
 
-        await generate_urls(args.regex, temp_file.name, args.limit, args.sort, args.interval)
+        await generate_urls(args.regex, temp_file.name, args.count, args.limit, args.sort, args.interval)
 
         print(f"Generated URLs are saved to: {temp_file.name}")
 
