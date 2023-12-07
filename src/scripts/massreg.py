@@ -3,17 +3,23 @@ Mass URL Generator / Validator.
 
 Usage examples:
 - GigaFile
-   python exrex_gen.py "https://xgf\.nu/[a-zA-Z0-9]{5}?" -c 1000 -t 5 -i 3 -o gigafile.txt
+   massregex "https://xgf\.nu/[a-zA-Z0-9]{5}?" -c 1000 -t 5 -i 3 -o gigafile.txt
 
 - PayPay
-   python exrex_gen.py "https://xgf\.nu/[a-zA-Z0-9]{4}" -c 1000 -t 5 -i 3 -o paypay.txt
+   massregex "https://xgf\.nu/[a-zA-Z0-9]{4}" -c 1000 -t 5 -i 3 -o paypay.txt
 
 - PayPal
-   python exrex_gen.py "[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}" -c 1000 -t 5 -i 3 -o paypay.txt
+   massregex "[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}" -c 1000 -t 5 -i 3 -o paypay.txt
+
+- Gist
+- githack
+- Pastebin "[a-zA-Z0-9]{8}"
+- firestorage
+- kozutumi
+- iFixit https://www.ifixit.com/GuidePDF/link/167751/en
 
 Ref.
-- URL:
-    ^((http|https|ftp):\/\/)?([a-zA-Z0-9.-]+(\.[a-zA-Z]{2,6})+)((\/|\?|#)[^\s]*)?$
+- URL: ^((http|https|ftp):\/\/)?([a-zA-Z0-9.-]+(\.[a-zA-Z]{2,6})+)((\/|\?|#)[^\s]*)?$
 
 '''
 
@@ -36,8 +42,12 @@ async def generate_urls(regex, count, output_file, interval):
     try:
         with open(output_file, "w") as file:
             for _ in tqdm(range(count), desc="Generating"):
-                url = await generate_url(regex)
-                file.write(url + "\n")
+                try:
+                    url = await generate_url(regex)
+                    file.write(url + "\n")
+                except Exception as e:
+                    print(f"Error generating URL: {e}")
+                await asyncio.sleep(interval)
                 # await asyncio.sleep(interval)
     except KeyboardInterrupt:
         print("\nGeneration interrupted. Partial results saved.")
@@ -114,8 +124,8 @@ async def main():
     parser = argparse.ArgumentParser(description="Generate URLs with specified regex pattern and check their validity.")
     parser.add_argument("-i", "--input", help="Input file for checking validity")
     parser.add_argument("-o", "--output", default="output.txt", help="Output file for generated URLs (default: output.txt)")
-    parser.add_argument("-r", help="Regular expression pattern for generating random strings")
-    parser.add_argument("-c", "--count", type=int, default=1, help="Number of URLs to generate (default: 1)")
+    parser.add_argument("-r", "--regex", default="https://www\.example\.com/\d{7}", help="Regular expression pattern for generating random strings")
+    parser.add_argument("-c", "--count", type=int, default=10, help="Number of URLs to generate (default: 10)")
     parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for HTTP requests (default: 5 seconds)")
     parser.add_argument("--interval", type=int, default=1, help="Interval between requests (default: 1 second)")
     parser.add_argument("-m", "--mode", nargs="+", choices=["generate", "check", "match"], default=["generate"], help="Mode: generate, check, or match (default: generate)")
