@@ -41,8 +41,8 @@ async def generate_ord(regex, limit):
     print(f'limit: {limit}')
     return '\n'.join(exrex.generate(regex, limit=limit))
 
-async def generate_rand(regex):
-    return exrex.getone(regex)
+async def generate_rand(regex, limit):
+    return exrex.getone(regex, limit=limit)
 
 async def generate_urls(regex, output_file, limit, sort, interval):
     try:
@@ -54,7 +54,7 @@ async def generate_urls(regex, output_file, limit, sort, interval):
             else:
                 for _ in tqdm(range(limit), desc="Generating"):
                     try:
-                        url = await generate_url(regex)
+                        url = await generate_rand(regex, limit)
                         file.write(url + "\n")
                     except Exception as e:
                         print(f"Error generating URL: {e}")
