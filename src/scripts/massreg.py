@@ -3,20 +3,20 @@ Mass URL Generator / Validator.
 
 Usage examples:
 - GigaFile
-   massregex "https://xgf\.nu/[a-zA-Z0-9]{5}?" -c 1000 -t 5 -i 3 -o gigafile.txt
+   massregex "https://xgf\.nu/[a-zA-Z0-9]{5}?" -l 1000 -t 5 -i 3 -o gigafile.txt
 
 - PayPay
-   massregex "https://xgf\.nu/[a-zA-Z0-9]{4}" -c 1000 -t 5 -i 3 -o paypay.txt
+   massregex "https://xgf\.nu/[a-zA-Z0-9]{4}" -l 1000 -t 5 -i 3 -o paypay.txt
 
 - PayPal
-   massregex "[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}" -c 1000 -t 5 -i 3 -o paypay.txt
+   massregex "[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}" -l 1000 -t 5 -i 3 -o paypay.txt
 
 - Gist
 - githack
 - Pastebin "[a-zA-Z0-9]{8}"
 - firestorage
 - kozutumi
-- iFixit https://www.ifixit.com/GuidePDF/link/167751/en
+- iFixit https://www\.ifixit\.com/GuidePDF/link/167751/en
 
 Ref.
 - URL: ^((http|https|ftp):\/\/)?([a-zA-Z0-9.-]+(\.[a-zA-Z]{2,6})+)((\/|\?|#)[^\s]*)?$
@@ -35,20 +35,31 @@ import re
 import yaml
 from datetime import datetime
 
-async def generate_url(regex):
+
+async def generate_ord(regex, limit):
+    print(f'Count: {exrex.count(regex, limit=limit)}')
+    print(f'limit: {limit}')
+    return '\n'.join(exrex.generate(regex, limit=limit))
+
+async def generate_rand(regex):
     return exrex.getone(regex)
 
-async def generate_urls(regex, count, output_file, interval):
+async def generate_urls(regex, output_file, limit, sort, interval):
     try:
         with open(output_file, "w") as file:
-            for _ in tqdm(range(count), desc="Generating"):
-                try:
-                    url = await generate_url(regex)
-                    file.write(url + "\n")
-                except Exception as e:
-                    print(f"Error generating URL: {e}")
-                await asyncio.sleep(interval)
-                # await asyncio.sleep(interval)
+
+            if sort:
+                url = await generate_ord(regex, limit)
+                file.write(url + "\n")
+            else:
+                for _ in tqdm(range(limit), desc="Generating"):
+                    try:
+                        url = await generate_url(regex)
+                        file.write(url + "\n")
+                    except Exception as e:
+                        print(f"Error generating URL: {e}")
+                    await asyncio.sleep(interval)
+                    # await asyncio.sleep(interval)
     except KeyboardInterrupt:
         print("\nGeneration interrupted. Partial results saved.")
     except Exception as e:
@@ -125,10 +136,11 @@ async def main():
     parser.add_argument("-i", "--input", help="Input file for checking validity")
     parser.add_argument("-o", "--output", default="output.txt", help="Output file for generated URLs (default: output.txt)")
     parser.add_argument("-r", "--regex", default="https://www\.example\.com/\d{7}", help="Regular expression pattern for generating random strings")
-    parser.add_argument("-c", "--count", type=int, default=10, help="Number of URLs to generate (default: 10)")
+    parser.add_argument("-l", "--limit", type=int, default=10, help="Max number of URLs to generate (default: 10)")
     parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for HTTP requests (default: 5 seconds)")
     parser.add_argument("--interval", type=int, default=1, help="Interval between requests (default: 1 second)")
     parser.add_argument("-m", "--mode", nargs="+", choices=["generate", "check", "match"], default=["generate"], help="Mode: generate, check, or match (default: generate)")
+    parser.add_argument("-s", "--sort", nargs="+", choices=["natural", "asc", "desc"], default=["natural"], help="Sort: generate, asc, or desc (default: natural)")
 
     args = parser.parse_args()
 
@@ -141,7 +153,7 @@ async def main():
     if "generate" in args.mode:
         temp_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
 
-        await generate_urls(args.regex, args.count, temp_file.name, args.interval)
+        await generate_urls(args.regex, temp_file.name, args.limit, args.sort, args.interval)
 
         print(f"Generated URLs are saved to: {temp_file.name}")
 
