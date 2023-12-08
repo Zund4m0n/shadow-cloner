@@ -11,7 +11,8 @@ Usage examples:
 
 - iFixit
     massreg -p 'https://www\.ifixit\.com/GuidePDF/link/\d+/en' -l 6 -i 0 -s natural -m generate
-    massreg $INPUT -o ifixit-1.txt -l 1 -i 0
+    cat $urls | head -n 2 | massreg -o $log -l 1
+    cat $log | yq '.' -o=json | jq '.[]|.[]|select(has("headers")).url' -r
 
 Author: -
 License: MIT
@@ -30,7 +31,42 @@ import tempfile
 import http.client
 from tqdm import tqdm
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 
+class Interface:
+    @staticmethod
+    def get_tempdir():
+        # timestamp = int(time.time())
+        timestamp = datetime.now().isoformat(timespec='auto')
+        temp_dir = tempfile.mkdtemp()
+        return timestamp, temp_dir
+
+    @staticmethod
+    def write_yaml(data, path=None, encoding='utf-8'):
+        if path:
+            with open(path, 'w', encoding=encoding) as f:
+                yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        else:
+            yaml_str = yaml.safe_dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            return yaml_str
+
+    @staticmethod
+    def update_yaml(new_data, path=None, encoding='utf-8'):
+        existing_data = {}
+        try:
+            if path:
+                with open(path, 'r', encoding=encoding) as f:
+                    existing_data = yaml.safe_load(f)
+        except FileNotFoundError:
+            pass
+
+        existing_data.update(new_data)
+
+        if path:
+            with open(path, 'w', encoding=encoding) as f:
+                yaml.safe_dump(existing_data, f, default_flow_style=False, sort_keys=True, allow_unicode=True)
+        else:
+            return existing_data
 
 async def generate_ord(p, limit):
     print(f'Count: {exrex.count(p, limit=limit)}')
@@ -64,55 +100,59 @@ async def generate_urls(p, tmpf, count, limit, sort, interval):
 async def get_status_message(status_code):
     return http.client.responses.get(status_code, "Unknown Status")
 
-async def check_valid_urls(urls, log, interval, timeout, content_subdir, download):
+async def check_valid_url(url, log_file_path, timeout, content_subdir, download, i, pbar):
     try:
-        with open(log, "w") as log:
-            for i, url in tqdm(enumerate(urls, start=1), desc="Checking Validity", total=len(urls), leave=False):
-                url = url.strip()
-                try:
-                    async with httpx.AsyncClient() as client:
-                        response = await client.head(url, timeout=timeout)
-                        status_message = await get_status_message(response.status_code)
-                        print(f"[{response.status_code}]{status_message}: {url}", end="\r")
-                        log_entry = {
-                            "status_code": response.status_code,
-                            "headers": dict(response.headers),
-                            "url": url
-                        }
-                        yaml.dump({i: [log_entry]}, log, default_flow_style=False)
-
-                        # Download contents if specified
-                        if download and response.status_code == 200:
-                            await download_contents(url, content_subdir)
-                except httpx.RequestError as e:
-                    if hasattr(e, "response") and e.response is not None:
-                        print(f"Error while checking {url}: {e.response.status_code}", end="\r")
-                        log_entry = {
-                            "error": f"Error while checking {url}: {e.response.status_code}",
-                            "url": url
-                        }
-                        yaml.dump({i: [log_entry]}, log, default_flow_style=False)
-                    else:
-                        print(f"Error while checking {url}: {e}", end="\r")
-                        log_entry = {
-                            "error": f"Error while checking {url}: {e}",
-                            "url": url
-                        }
-                        yaml.dump({i: [log_entry]}, log, default_flow_style=False)
-                except Exception as e:
-                    print(f"Unknown error while checking {url}: {e}", end="\r")
-                    log_entry = {
-                        "error": f"Unknown error while checking {url}: {e}",
-                        "url": url
-                    }
-                    yaml.dump({i: [log_entry]}, log, default_flow_style=False)
-                await asyncio.sleep(interval)
-    except KeyboardInterrupt:
-        print("\nGeneration and checking interrupted. Partial results saved.")
+        with open(log_file_path, "a") as log:
+            async with httpx.AsyncClient() as client:
+                response = await client.head(url, timeout=timeout)
+                status_message = await get_status_message(response.status_code)
+                print(f"[{response.status_code}]{status_message}: {url}", end="\r")
+                log_entry = {
+                    "status_code": response.status_code,
+                    "headers": dict(response.headers),
+                    "url": url
+                }
+                Interface.update_yaml({i: [log_entry]}, log_file_path)
+                # Download contents if specified
+                if download and response.status_code == 200:
+                    await download_contents(url, content_subdir)
+    except httpx.RequestError as e:
+        if hasattr(e, "response") and e.response is not None:
+            print(f"Error while checking {url}: {e.response.status_code}", end="\r")
+            log_entry = {
+                "error": f"Error while checking {url}: {e.response.status_code}",
+                "url": url
+            }
+            Interface.update_yaml({i: [log_entry]}, log_file_path)
+        else:
+            print(f"Error while checking {url}: {e}", end="\r")
+            log_entry = {
+                "error": f"Error while checking {url}: {e}",
+                "url": url
+            }
+            Interface.update_yaml({i: [log_entry]}, log_file_path)
     except Exception as e:
-        print(f"Error during checking: {e}")
+        print(f"Unknown error while checking {url}: {e}", end="\r")
+        log_entry = {
+            "error": f"Unknown error while checking {url}: {e}",
+            "url": url
+        }
+        Interface.update_yaml({i: [log_entry]}, log_file_path)
     finally:
-        print(f'Saved at: {log.name}')
+        pbar.update(1)
+
+async def check_valid_urls_parallel(urls, log_file_path, interval, timeout, content_subdir, download):
+    with ThreadPoolExecutor() as executor:
+        pbar = tqdm(total=len(urls), desc="Checking Validity", leave=False)
+        tasks = [
+            asyncio.ensure_future(
+                check_valid_url(url, log_file_path, timeout, content_subdir, download, i, pbar)
+            ) for i, url in enumerate(urls, start=1)
+        ]
+        await asyncio.gather(*tasks)
+        pbar.close()
+        print(f'Saved log at: {log_file_path}')
+        print(f'Saved contents at: {content_subdir}')
 
 def match_urls(input_path, pattern):
     try:
@@ -143,8 +183,8 @@ async def download_contents(url, output_folder):
 
                 # Save contents to a file
                 content_filename = os.path.join(save_folder, "content.html")
-                with open(content_filename, "wb") as content_file:
-                    content_file.write(response.content)
+                async with aiofiles.open(content_filename, 'wb') as content_file:
+                    await content_file.write(response.content)
 
                 print(f"Contents downloaded and saved to: {content_filename}")
             else:
@@ -166,21 +206,22 @@ async def main():
     parser.add_argument("-d", "--download", action="store_true", help="Enable downloading contents for valid URLs (default: False)")
 
     args = parser.parse_args()
-    temp_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
-    timestamp = datetime.now().isoformat(timespec='auto')
+    ts, temp_dir = Interface.get_tempdir()
+    temp_file = f'{temp_dir}/{ts}'
 
     if "check" in args.mode:
         log_dir = 'log'
         content_dir = "contents"
         os.makedirs(log_dir, exist_ok=True)
         os.makedirs(content_dir, exist_ok=True)
-        log_file = f"{log_dir}/{timestamp}.yaml"
-        content_subdir = f"{content_dir}/{timestamp}"
-        if not args.input_path:
-            urls = sys.stdin.read().splitlines()
-        else:
+        log_file = f"{log_dir}/{ts}.yaml"
+        content_subdir = f"{content_dir}/{ts}"
+        if args.input_path:
+
             urls = args.input_path
-        await check_valid_urls(urls, args.output_path, args.interval, args.timeout, content_subdir, args.download)
+        else:
+            urls = sys.stdin.read().splitlines()
+        await check_valid_urls_parallel(urls, args.output_path, args.interval, args.timeout, content_subdir, args.download)
 
     if "generate" in args.mode:
         await generate_urls(args.pattern, temp_file.name, args.count, args.limit, args.sort, args.interval)
